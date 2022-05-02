@@ -5,8 +5,12 @@ import re
 import random
 import math
 import nltk
-
-pickle_file = "data/reviews.pickle"
+import spacy
+from sklearn.svm import LinearSVC
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.naive_bayes import MultinomialNB
+from sklearn import metrics
+import timeit
 
 # ## init spaCy tokenizer
 # from spacy.tokenizer import Tokenizer
@@ -17,6 +21,9 @@ pickle_file = "data/reviews.pickle"
 # tokenizer = nlp.tokenizer
 
 # from nltk.tokenize import word_tokenize
+nlp = spacy.load("en_core_web_sm", exclude=["parser"])
+nlp.enable_pipe("senter")
+
 
 
 def tokenize(s):
@@ -34,6 +41,7 @@ def get_sents(json_entry):
 
     for s in sents:
         tokens = tokenize(s[1])
+        # tokens = [token.text for token in nlp(str(s))]
         spoiler_flag = s[0]
         # yield?
         tuples.append((tokens,spoiler_flag))
@@ -62,16 +70,79 @@ def load_data(file_name, head = None):
 
     return data
 
+def ordered_load_sents(file_name, head = None):
+    '''
+    File input is json file.
+    Returns a dict where key = bookID
+    and value = list of (tokens, spoiler_flag) for all sentences from all reviews 
+    of bookID
+    '''
+    count = 0
+    fp = open(file_name,"r")
+    book_dict = json.load(fp)
 
-def make_pickle(data):
-    pickle_out = open(pickle_file,"wb")
-    pickle.dump(data, pickle_out)
-    pickle_out.close()
+    for key, values in book_dict.items():
 
-def load_pickle():
-    pickle_in = open(pickle_file,"rb")
-    data = pickle.load(pickle_in)
-    return data
+        count += len(values)
+        # break if reaches the nth line
+        if (head is not None) and (count > head):
+            break
+
+        tuple_list = []
+        for jentry in values:
+            s = get_sents(jentry)
+            tuple_list.extend(s)
+        
+        ## update values
+        book_dict[key] = tuple_list
+
+    return book_dict
+
+
+def get_sents_from_key(book_dict, key_list):
+
+    sents = []
+    for key in key_list:
+        sents.extend(book_dict[key])
+
+    return sents
+
+
+def ordered_partition(sents_dict, seed=10):
+    '''
+    Takes a dict where key=bookID and values= list of (sents, tuples) for bookID
+    partitions sents 10-10-80 into dev-test-train trying to keep
+    same bookIDs in same bucket so same book will not overlap between train/test
+    '''
+    # l = list(sents_dict.items())
+    # random.Random(seed).shuffle(l)
+    # sents_dict = dict(l)
+
+    key_list = list(sents_dict.keys())
+    random.Random(seed).shuffle(key_list)
+    size = len(key_list)
+    bite = math.floor(size/10)
+    test_ky = key_list[:bite]
+    devtest_ky = key_list[bite:2*bite]
+    train_ky = key_list[2*bite:]
+
+
+
+    test_sents = get_sents_from_key(sents_dict, test_ky)
+    train_sents = get_sents_from_key(sents_dict, train_ky)
+    devtest_sents = get_sents_from_key(sents_dict, devtest_ky)
+
+    
+    print("Number of sentences:")
+    print("total size:", len(sents_dict.values()))
+    print("- Test:", len(test_sents))
+    print("- Devtest:", len(devtest_sents))
+    print("- Training:", len(train_sents))
+    print("Ratio: ", (len(test_sents)/ len(sents_dict.values()))*10, "-",  
+        (len(devtest_sents)/ len(sents_dict.values()))*10, "-",  
+        (len(train_sents)/ len(sents_dict.values()))*10)
+
+    return train_sents, test_sents, devtest_sents
 
 
 def partition(sents, seed=10):
@@ -84,11 +155,11 @@ def partition(sents, seed=10):
     devtest_sents = sents[bite:2*bite]
     train_sents = sents[2*bite:]
 
-    # print("Number of sentences:")
-    # print("total size:", size)
-    # print("- Test:", len(test_sents))
-    # print("- Devtest:", len(devtest_sents))
-    # print("- Training:", len(train_sents))
+    print("Number of sentences:")
+    print("total size:", size)
+    print("- Test:", len(test_sents))
+    print("- Devtest:", len(devtest_sents))
+    print("- Training:", len(train_sents))
 
     return train_sents, test_sents, devtest_sents
 
@@ -106,61 +177,112 @@ def bow_feats(sent):
 def pos_feats(sents):
     ...
 
-
-
-if __name__=="__main__":
-
-    import timeit
-
-    start = timeit.default_timer()
-
-    ## dataset
-    ds = 'data/goodreads_reviews_spoiler.json.gz'
-    num_entries = 100000
-    data = load_data(ds, num_entries)
-    # print(data)
-    train_sents, test_sents, devtest_sents = partition(data)
-
-    stop = timeit.default_timer()
-
-    print('Time: ', stop - start)  
-
+def classify_bow(train_sents, test_sents, devtest_sents):
+    '''
+    Builds BOW calssifier (SVC or Naive) and prints accuracy
+    or most informative feats
+    '''
+    # get feats
     test_feats = [(bow_feats(sent), label) for sent, label in test_sents]
     devtest_feats = [(bow_feats(sent), label) for sent, label in devtest_sents]
     train_feats = [(bow_feats(sent), label) for sent, label in train_sents]
 
-    # print(train_feats[:10])
-    # print(test_feats[:10])
-
+    # classify_bow = nltk.classify.SklearnClassifier(LinearSVC())
     classify_bow = nltk.NaiveBayesClassifier.train(train_feats)
-    accuracy = nltk.classify.accuracy(classify_bow, test_feats)
-    # print("Accuracy score:", accuracy)
 
+    classify_bow.train(train_feats)
+
+    accuracy = nltk.classify.accuracy(classify_bow, devtest_feats)
+    print("Accuracy score:", accuracy)
+    classify_bow.show_most_informative_features(40)
+
+
+
+def classify_bowc(train_sents, test_sents, devtest_sents):
+    '''
+    Builds BOW with counts calssifier (tf-idf weighing)
+    '''
     # BOW with counts
-    from sklearn.feature_extraction.text import CountVectorizer
     count_vect = CountVectorizer()
 
     X_train_counts = count_vect.fit_transform([" ".join(sent) for sent, label in train_sents])
     y_train = [label for sent, label in train_sents]
 
-    X_test_counts = count_vect.transform([" ".join(sent) for sent, label in test_sents])
-    y_test = [label for sent, label in test_sents]
+    X_test_counts = count_vect.transform([" ".join(sent) for sent, label in devtest_sents])
+    y_test = [label for sent, label in devtest_sents]
 
-    from sklearn.naive_bayes import MultinomialNB
 
-    whosaid2 = MultinomialNB()
-    whosaid2.fit(X_train_counts, y_train)
+    classify_bowc = MultinomialNB()
+    classify_bowc.fit(X_train_counts, y_train)
 
-    y_test_predicted = whosaid2.predict(X_test_counts)
+    y_test_predicted = classify_bowc.predict(X_test_counts)
 
-    from sklearn import metrics
     print("Multinomial results")
     print(metrics.classification_report(y_test, y_test_predicted))
 
     print(metrics.accuracy_score(y_test, y_test_predicted))
 
-    # make_pickle(data)
-    # data2 = load_pickle()
-    # print(len(data2))
-    # print(data2)
+
+
+if __name__=="__main__":
+    '''
+    Loads and partitions data into train-test-devtest
+    calls classifiers
+    '''
+    # start = timeit.default_timer()
+
+    # ## dataset
+    # ds = 'data/goodreads_reviews_spoiler.json.gz'
+    # # ds = 'data/shuffled_data.json.gz'
+    # num_entries = 100000
+    # data = load_data(ds, num_entries)
+
+    # # print(data)
+    # train_sents, test_sents, devtest_sents = partition(data)
+
+    # stop = timeit.default_timer()
+    # print('Time: ', stop - start)  
+
+
+    # classify_bow(train_sents, test_sents, devtest_sents)
+    # classify_bowc(train_sents, test_sents, devtest_sents)
  
+    start = timeit.default_timer()
+
+    ## dataset
+    ds = 'data/ordered_data.json'
+    num_entries = 100
+    data = ordered_load_sents(ds, num_entries)
+
+
+    newf = open("data/test.txt","w")
+    newf.write(str(data))
+    newf.close()
+
+    # kv_pair = next(iter((data.items())) )
+    # print(kv_pair[0])
+    # l = len(kv_pair[1])
+    # print(l)
+    # print(kv_pair[1])
+    
+    stop = timeit.default_timer()
+    print('Time: ', stop - start) 
+
+    
+    start = timeit.default_timer()
+
+    train_sents, test_sents, devtest_sents = ordered_partition(data)
+
+    # print(devtest_sents[:10])
+    stop = timeit.default_timer()
+    print('Time: ', stop - start)  
+
+    # start = timeit.default_timer()
+    # classify_bow(train_sents, test_sents, devtest_sents)
+    # stop = timeit.default_timer()
+    # print('Time: ', stop - start)  
+
+    # start = timeit.default_timer()
+    # classify_bowc(train_sents, test_sents, devtest_sents)
+    # stop = timeit.default_timer()
+    # print('Time: ', stop - start)  
