@@ -72,7 +72,8 @@ def load_data(file_name, head = None):
 
 def ordered_load_sents(file_name, head = None):
     '''
-    File input is json file.
+    File input is json file where keys are bookIDs and
+    each value is all reviews (json entry) for that bookIS.
     Returns a dict where key = bookID
     and value = list of (tokens, spoiler_flag) for all sentences from all reviews 
     of bookID
@@ -80,6 +81,7 @@ def ordered_load_sents(file_name, head = None):
     count = 0
     fp = open(file_name,"r")
     book_dict = json.load(fp)
+    new_dict = {}
 
     for key, values in book_dict.items():
 
@@ -91,18 +93,20 @@ def ordered_load_sents(file_name, head = None):
         tuple_list = []
         for jentry in values:
             s = get_sents(jentry)
+            # print(s)
             tuple_list.extend(s)
         
         ## update values
-        book_dict[key] = tuple_list
+        new_dict[key] = tuple_list
 
-    return book_dict
+    return new_dict
 
 
-def get_sents_from_key(book_dict, key_list):
-
+def get_sents_from_key(book_dict, key_list, seed=10):
+    ''' helper '''
     sents = []
     for key in key_list:
+        # random.Random(seed).shuffle(book_dict[key])
         sents.extend(book_dict[key])
 
     return sents
@@ -114,9 +118,6 @@ def ordered_partition(sents_dict, seed=10):
     partitions sents 10-10-80 into dev-test-train trying to keep
     same bookIDs in same bucket so same book will not overlap between train/test
     '''
-    # l = list(sents_dict.items())
-    # random.Random(seed).shuffle(l)
-    # sents_dict = dict(l)
 
     key_list = list(sents_dict.keys())
     random.Random(seed).shuffle(key_list)
@@ -134,13 +135,16 @@ def ordered_partition(sents_dict, seed=10):
 
     
     print("Number of sentences:")
-    print("total size:", len(sents_dict.values()))
+    total = 0
+    for v in sents_dict.values():
+        total += len(v)
+    print(total)
     print("- Test:", len(test_sents))
     print("- Devtest:", len(devtest_sents))
     print("- Training:", len(train_sents))
-    print("Ratio: ", (len(test_sents)/ len(sents_dict.values()))*10, "-",  
-        (len(devtest_sents)/ len(sents_dict.values()))*10, "-",  
-        (len(train_sents)/ len(sents_dict.values()))*10)
+    print("Ratio: ", int(100*(len(test_sents)/ total)), "-",  
+        int(100*(len(devtest_sents)/ total)), "-",  
+        int(100*(len(train_sents)/ total)))
 
     return train_sents, test_sents, devtest_sents
 
@@ -229,60 +233,26 @@ if __name__=="__main__":
     Loads and partitions data into train-test-devtest
     calls classifiers
     '''
-    # start = timeit.default_timer()
-
-    # ## dataset
-    # ds = 'data/goodreads_reviews_spoiler.json.gz'
-    # # ds = 'data/shuffled_data.json.gz'
-    # num_entries = 100000
-    # data = load_data(ds, num_entries)
-
-    # # print(data)
-    # train_sents, test_sents, devtest_sents = partition(data)
-
-    # stop = timeit.default_timer()
-    # print('Time: ', stop - start)  
-
-
-    # classify_bow(train_sents, test_sents, devtest_sents)
-    # classify_bowc(train_sents, test_sents, devtest_sents)
  
     start = timeit.default_timer()
 
     ## dataset
     ds = 'data/ordered_data.json'
-    num_entries = 100
+    num_entries = 150000
     data = ordered_load_sents(ds, num_entries)
 
-
-    newf = open("data/test.txt","w")
-    newf.write(str(data))
-    newf.close()
-
-    # kv_pair = next(iter((data.items())) )
-    # print(kv_pair[0])
-    # l = len(kv_pair[1])
-    # print(l)
-    # print(kv_pair[1])
+    # newf = open("data/test.txt","w")
+    # newf.write(str(data))
+    # newf.close()
     
     stop = timeit.default_timer()
-    print('Time: ', stop - start) 
+    print('Time for loading data: ', stop - start) 
 
     
-    start = timeit.default_timer()
-
     train_sents, test_sents, devtest_sents = ordered_partition(data)
 
-    # print(devtest_sents[:10])
-    stop = timeit.default_timer()
-    print('Time: ', stop - start)  
+    classify_bow(train_sents, test_sents, devtest_sents)
 
-    # start = timeit.default_timer()
-    # classify_bow(train_sents, test_sents, devtest_sents)
-    # stop = timeit.default_timer()
-    # print('Time: ', stop - start)  
+    classify_bowc(train_sents, test_sents, devtest_sents)
 
-    # start = timeit.default_timer()
-    # classify_bowc(train_sents, test_sents, devtest_sents)
-    # stop = timeit.default_timer()
-    # print('Time: ', stop - start)  
+    

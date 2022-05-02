@@ -78,25 +78,15 @@ if __name__=="__main__":
     ds = 'data/goodreads_reviews_spoiler.json.gz'
     num_entries = None
     book_dict = order_by_book(ds, num_entries)
-
-    # kv_pair = next(iter((book_dict.items())) )
-    # print(kv_pair[0])
-    # l = len(kv_pair[1])
-    # print(l)
-    # print(kv_pair[1][:l])
     
     ##write data 
     newf = open("data/ordered_data.json","w")
     newf.write(json.dumps(book_dict))
     newf.close()
 
-    read_f = open("data/ordered_data.json","r")
-    jobj = json.load(read_f)
-    kv_pair = next(iter((jobj.items())) )
-    print(kv_pair[0])
-    l = len(kv_pair[1])
-    print(l)
-    print(kv_pair[1][:l])
+    # read_f = open("data/ordered_data.json","r")
+    # ## check if loads in json
+    # jobj = json.load(read_f)
 
     stop = timeit.default_timer()
 
