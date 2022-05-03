@@ -10,7 +10,17 @@ from sklearn.svm import LinearSVC
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.naive_bayes import MultinomialNB
 from sklearn import metrics
+from sklearn.naive_bayes import GaussianNB
 import timeit
+import string
+from nltk.metrics import precision, recall, f_measure
+import collections
+import itertools
+
+
+fp = open("data/stop_words.txt", "r")
+stop_words = [line.rstrip() for line in fp.readlines()]
+# print(stop_words)
 
 # ## init spaCy tokenizer
 # from spacy.tokenizer import Tokenizer
@@ -41,6 +51,8 @@ def get_sents(json_entry):
 
     for s in sents:
         tokens = tokenize(s[1])
+        # tokens = [t for t in tok if (t not in string.punctuation) and (t not in stop_words)]
+        # print(tokens)
         # tokens = [token.text for token in nlp(str(s))]
         spoiler_flag = s[0]
         # yield?
@@ -49,6 +61,29 @@ def get_sents(json_entry):
     # print(tuples)
     return tuples
     
+def get_sents_no_names(json_entry):
+    '''
+    Gathers only sentences + spoiler flag from json entry
+    '''
+    tuples = []
+    sents = json_entry['review_sentences']
+
+    for s in sents:
+        tokens = tokenize(s[1])
+        doc = nlp(s[1])
+
+        t = []
+        for tok in tokens:
+            if not tok in spacy_to_str(doc.ents):
+                t.append(tok)
+
+        # tokens = [token.text for token in nlp(str(s))]
+        spoiler_flag = s[0]
+        # yield?
+        tuples.append((t,spoiler_flag))
+
+    # print(tuples)
+    return tuples
 
 
 def load_data(file_name, head = None):
@@ -164,9 +199,24 @@ def partition(sents, seed=10):
     print("- Test:", len(test_sents))
     print("- Devtest:", len(devtest_sents))
     print("- Training:", len(train_sents))
+    print("Ratio: ", int(100*(len(test_sents)/ size)), "-",  
+        int(100*(len(devtest_sents)/ size)), "-",  
+        int(100*(len(train_sents)/ size)))
 
     return train_sents, test_sents, devtest_sents
 
+def bow_feats_no_names(sent):
+    '''
+    Returns bag of words feature (simple no counts just flag)
+    '''
+    bow = {}
+    doc = nlp(sent)
+
+    for token in sent:
+        if not token in spacy_to_str(doc.ents):
+            bow[token.lower()] = 1
+
+    return bow
 
 def bow_feats(sent):
     '''
@@ -178,27 +228,123 @@ def bow_feats(sent):
     return bow
 
 
-def pos_feats(sents):
-    ...
+def spacy_to_str(tok_list):
+    res = []
+    for spacy_tok in tok_list:
+        res.append(spacy_tok.text)
+    return res
 
-def classify_bow(train_sents, test_sents, devtest_sents):
+
+def pos_feats(sent):
+    '''
+    Bigram feats: POS tag
+    '''
+    # NNP: proper noun (overfit?), VBP: verb present tense
+    # JJ: adj
+    a = ("NNP", "NNS", "NN")
+    b = ("VBP", "VBZ", "VBD", "VBG", "VBN","JJ")
+    target_pos = list(itertools.product(a,b))
+    bigrams = {}
+    tags = nltk.pos_tag(sent)
+
+    unilist, poslist = zip(*tags)
+    ##problem: hardcoded NNP
+    if not ("NN" in poslist or "NNS" in poslist or "NNP" not in poslist):
+        return {}
+
+    cartesian1 = list(itertools.product(unilist, unilist))
+    cartesian2 = list(itertools.product(poslist, poslist))
+
+    for i, feats in enumerate(cartesian1):
+        if cartesian2[i] in target_pos:
+            ##problem: hardcoded NNP
+            # feats = ("NNP", feats[1])
+            bi = "-".join(feats)
+            bigrams[bi] = 1
+
+    # print(bigrams)
+    ## PROBLEM: a lot of these will be empty (won't always get
+    # target_pos). Need to normalize data for it to work?
+    return bigrams
+
+def classify_pos(train_sents, test_sents, devtest_sents, get_feats=pos_feats):
     '''
     Builds BOW calssifier (SVC or Naive) and prints accuracy
     or most informative feats
     '''
     # get feats
-    test_feats = [(bow_feats(sent), label) for sent, label in test_sents]
-    devtest_feats = [(bow_feats(sent), label) for sent, label in devtest_sents]
-    train_feats = [(bow_feats(sent), label) for sent, label in train_sents]
+    # test_feats = [(get_feats(sent), label) for sent, label in test_sents if get_feats(sent) != {}]
+    devtest_feats = [(get_feats(sent), label) for sent, label in devtest_sents  if get_feats(sent) != {}]
+    train_feats = [(get_feats(sent), label) for sent, label in train_sents  if get_feats(sent) != {}]
+
+    # print(devtest_feats[:40])
+
+    # BOW with counts
+    count_vect = CountVectorizer()
+
+    X_train_counts = count_vect.fit_transform([" ".join(get_feats(sent)) for sent, label in train_sents])
+    y_train = [label for sent, label in train_sents]
+
+    X_test_counts = count_vect.transform([" ".join(get_feats(sent)) for sent, label in devtest_sents])
+    y_test = [label for sent, label in devtest_sents]
+
+    classify_bowc = LinearSVC()
+    classify_bowc.fit(X_train_counts, y_train)
+
+    y_test_predicted = classify_bowc.predict(X_test_counts)
+
+    print("Multinomial results")
+    print(metrics.classification_report(y_test, y_test_predicted))
+
+    print(metrics.accuracy_score(y_test, y_test_predicted))
+
+
+
+
+def classify_bow(train_sents, test_sents, devtest_sents, get_feats=bow_feats):
+    '''
+    Builds BOW calssifier (SVC or Naive) and prints accuracy
+    or most informative feats
+    '''
+    # get feats
+    # test_feats = [(get_feats(sent), label) for sent, label in test_sents ]
+    devtest_feats = [(get_feats(sent), label) for sent, label in devtest_sents ]
+    train_feats = [(get_feats(sent), label) for sent, label in train_sents ]
+
+    print(devtest_feats[:40])
 
     # classify_bow = nltk.classify.SklearnClassifier(LinearSVC())
     classify_bow = nltk.NaiveBayesClassifier.train(train_feats)
 
     classify_bow.train(train_feats)
 
-    accuracy = nltk.classify.accuracy(classify_bow, devtest_feats)
-    print("Accuracy score:", accuracy)
+    print("NLTK Naive Bayes:")
+    # accuracy = nltk.classify.accuracy(classify_bow, devtest_feats)
+    # print("Accuracy score:", accuracy)
+
     classify_bow.show_most_informative_features(40)
+
+    ## calculate precision/recall/f1
+    refsets = collections.defaultdict(set)
+    testsets = collections.defaultdict(set)
+
+    for i, (feats, label) in enumerate(devtest_sents):
+        refsets[label].add(i)
+        observed = classify_bow.classify(bow_feats(feats))
+        testsets[observed].add(i)
+
+    print("For label 1:")
+    label = 1
+    print( 'Precision:', precision(refsets[label], testsets[label]) )
+    print( 'Recall:', recall(refsets[label], testsets[label]) )
+    print( 'F1:', f_measure(refsets[label], testsets[label], alpha=0.5) )
+    print("For label 0:")
+    label = 0
+    print( 'Precision:', precision(refsets[label], testsets[label]) )
+    print( 'Recall:', recall(refsets[label], testsets[label]) )
+    print( 'F1:', f_measure(refsets[label], testsets[label], alpha=0.5) )
+    
+    
 
 
 
@@ -237,22 +383,21 @@ if __name__=="__main__":
     start = timeit.default_timer()
 
     ## dataset
-    ds = 'data/ordered_data.json'
-    num_entries = 150000
-    data = ordered_load_sents(ds, num_entries)
-
-    # newf = open("data/test.txt","w")
-    # newf.write(str(data))
-    # newf.close()
+    ds = 'data/shuffled_data.json.gz'
+    num_entries = 100000
+    data = load_data(ds, num_entries)
     
     stop = timeit.default_timer()
     print('Time for loading data: ', stop - start) 
 
     
-    train_sents, test_sents, devtest_sents = ordered_partition(data)
+    train_sents, test_sents, devtest_sents = partition(data)
 
     classify_bow(train_sents, test_sents, devtest_sents)
 
-    classify_bowc(train_sents, test_sents, devtest_sents)
+    # classify_bowc(train_sents, test_sents, devtest_sents)
+    # classify_pos(train_sents, test_sents, devtest_sents)
+
+
 
     
