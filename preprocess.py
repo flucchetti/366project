@@ -29,7 +29,8 @@ def load_shuffled(file_name, head = None):
             if (head is not None) and (count > head):
                break
     #shuffle data and return up to head
-    random.shuffle(data)  
+    seed=10
+    random.Random(seed).shuffle(data)  
     return data
 
 @DeprecationWarning
@@ -130,7 +131,7 @@ def make_genre_dict(genre_ds):
 
         genre = sorted(g, key=g.get, reverse=True)[0].split(",")[0]
 
-        ##limit to these genres:
+        ##limit to these most popular genres:
         if genre not in ["fantasy", "mystery", "romance", "children", "young-adult"]:
             continue
 
@@ -213,6 +214,7 @@ def save_genre(num_entries=None):
         newf = open("data/"+genre+"_data.json","w")
         for review in genre_dict[genre]:
             newf.write(json.dumps(review))
+            newf.write("\n")
         newf.close()
 
     stop = timeit.default_timer()

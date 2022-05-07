@@ -5,18 +5,30 @@ import math
 import random
 import spacy
 import nltk
+import string
+from nltk.corpus import stopwords
 
 # from nltk.tokenize import word_tokenize
 nlp = spacy.load("en_core_web_sm", exclude=["parser"])
 nlp.enable_pipe("senter")
+
+# ## init spaCy tokenizer
+# from spacy.tokenizer import Tokenizer
+# from spacy.lang.en import English
+# nlp = English()
+# # Create a Tokenizer with the default settings for English
+# # including punctuation rules and exceptions
+# tokenizer = nlp.tokenizer
 
 '''
 This module contains methods to load tokenized sentences from dataset
 and partition into test/train/dev sets
 '''
 
-@DeprecationWarning
-def ordered_load_sents(file_name, head = None):
+stop_words = list(stopwords.words('english'))
+
+# @DeprecationWarning
+def book_load_sents(file_name, head = None):
     '''
     File input is JSON file where keys are bookIDs and
     each value is all reviews (json entry) for that bookIS.
@@ -57,8 +69,8 @@ def get_sents_from_key(book_dict, key_list, seed=10):
 
     return sents
 
-@DeprecationWarning
-def ordered_partition(sents_dict, seed=10):
+# @DeprecationWarning
+def book_partition(sents_dict, seed=10):
     '''
     Takes a dict where key=bookID and values= list of (sents, tuples) for bookID
     partitions sents 10-10-80 into dev-test-train trying to keep
@@ -97,7 +109,10 @@ def ordered_partition(sents_dict, seed=10):
 
 def tokenize(s):
     t = re.split(r"(\W)", s)
-    tokens = list(i for i in t if i not in ["\t","\n","\r","\f","\v"," ",""])
+    tokens = [i for i in t 
+            if i not in ["\t","\n","\r","\f","\v"," ",""]
+            and (i not in string.punctuation)
+            and (i not in stop_words)]
     return tokens
 
 def spacy_tok_to_str(tok_list):
@@ -118,11 +133,9 @@ def get_sents(json_entry):
         if len(s[1]) < 3:
             continue
         tokens = tokenize(s[1])
-        # tokens = [t for t in tok if (t not in string.punctuation) and (t not in stop_words)]
         # print(tokens)
         # tokens = [token.text for token in nlp(str(s))]
         spoiler_flag = s[0]
-        # yield?
         tuples.append((tokens,spoiler_flag))
 
     # print(tuples)
