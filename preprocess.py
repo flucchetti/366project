@@ -1,7 +1,10 @@
 import json
 import gzip
 import random
+from termios import VLNEXT
 import timeit
+
+from flask_sqlalchemy import get_debug_queries
 
 '''
 This module contains methods to pre-process the dataset
@@ -94,11 +97,11 @@ def save_book_order():
     book_dict = load_book_order(ds, num_entries)
     
     ##write data to json file
-    newf = open("data/ordered_data.json","w")
+    newf = open("data/book_order_data.json","w")
     newf.write(json.dumps(book_dict))
     newf.close()
 
-    # read_f = open("data/ordered_data.json","r")
+    # read_f = open("data/book_order_data.json","r")
     # ## check if loads in json
     # jobj = json.load(read_f)
 
@@ -107,8 +110,116 @@ def save_book_order():
     print('Time: ', stop - start)  
 
 
+def make_genre_dict(genre_ds):
+    '''
+    Takes genre dataset (JSON) and makes a genre-to-bookIDs dict
+    '''
+    genre_to_bookID = {}
+
+    for line in open(genre_ds,"r"):
+        # print(line)
+        jent = json.loads(line)
+        bookID = jent["book_id"]
+
+        ## get primary genre out of list
+        ## most popular genre classification has highest value
+        g = jent["genres"]
+
+        if g == {}:
+            continue
+
+        genre = sorted(g, key=g.get, reverse=True)[0].split(",")[0]
+
+        ##limit to these genres:
+        if genre not in ["fantasy", "mystery", "romance", "children", "young-adult"]:
+            continue
+
+        if not genre in genre_to_bookID.keys():
+            ## new list
+            genre_to_bookID[genre] = [bookID]
+        else:
+            genre_to_bookID[genre].append(bookID)
+
+    # ## order genres by size of booklist
+    # sorted(genre_to_bookID, key=lambda k: len(genre_to_bookID[k]), reverse=True)
+
+    # # print size of booklist for each genre
+    # for k,v in genre_to_bookID.items():
+    #     print(k, ": ", len(v))
+
+    return genre_to_bookID
+
+
+def invert_mapping(d):
+    inv_d = {}
+
+    for k, v in d.items():
+        for i in v:
+            inv_d[i] = k
+
+    return inv_d
+
+
+def load_genre(bookID_ds, genre_ds, head = None):
+    '''
+    Creates dict from bookID JSON dataset where key = genre id
+    and value = list of reviews for books with that genre
+    '''
+    count = 0
+    fp = open(bookID_ds,"r")
+    book_dict = json.load(fp)
+    genre_dict = {}
+
+    # init bookID-to-genre dict from dataset
+    genre_to_booklist = make_genre_dict(genre_ds)
+    book_to_genre = invert_mapping(genre_to_booklist)
+
+    for bookID, jentries in book_dict.items():
+
+        # break if reaches the nth entry - for DEV only
+        count += len(jentries)
+        if (head is not None) and (count > head):
+            break
+
+        if not bookID in book_to_genre.keys():
+            ## discard if not in target genres
+            continue
+
+        key = book_to_genre[bookID]
+
+        for jent in jentries:
+            # print(jent)
+            if key not in genre_dict.keys():
+                genre_dict[key] = [jent]
+            else:
+                genre_dict[key].append(jent)
+
+    return genre_dict
+
+
+def save_genre(num_entries=None):
+    '''
+    Saves dataset divided by genreID to different genre file
+    '''
+    start = timeit.default_timer()
+
+    ## dataset
+    book_ds = "data/book_order_data.json"
+    genre_ds= "data/goodreads_book_genres_initial.json"
+    genre_dict = load_genre(book_ds, genre_ds, num_entries)
+    
+    ##write data to genre.json files
+    for genre in genre_dict.keys():
+        newf = open("data/"+genre+"_data.json","w")
+        for review in genre_dict[genre]:
+            newf.write(json.dumps(review))
+        newf.close()
+
+    stop = timeit.default_timer()
+
+    print('Time: ', stop - start)  
+
+
 
 if __name__=="__main__":
-
-   ...
-
+    save_genre()

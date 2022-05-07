@@ -18,7 +18,7 @@ and partition into test/train/dev sets
 @DeprecationWarning
 def ordered_load_sents(file_name, head = None):
     '''
-    File input is json file where keys are bookIDs and
+    File input is JSON file where keys are bookIDs and
     each value is all reviews (json entry) for that bookIS.
     Returns a dict where key = bookID
     and value = list of (tokens, spoiler_flag) for all sentences from all reviews 
