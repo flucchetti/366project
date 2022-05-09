@@ -66,7 +66,7 @@ with gzip.open(book_info_ds) as f:
 
 def make_balanced_csv(dataset, csv_file, num_revs=None):
     '''
-    Create csv
+    Create csv from input json.gz dataset
     '''
     entry_count = 0
     num_spoil = 0

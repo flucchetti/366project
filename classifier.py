@@ -1,9 +1,9 @@
 import re
 import math
 import collections
-# from features import *
-# from partition import *
+from features import *
 import string
+import timeit
 import pandas as pd
 from  numpy import shape
 import scipy as sp
@@ -33,59 +33,18 @@ stop_words = list(stopwords.words('english'))
 This module contains all classifiers
 '''
 
-def tokenizer(s):
-    t = re.split(r"(\W)", s)
-    tokens = [i for i in t 
-            if i not in ["\t","\n","\r","\f","\v"," ",""]
-            and (i not in string.punctuation)
-            # and (i not in stop_words)
-            ]
-    return tokens
 
-def bigram_feats(sent, need_tokenize=True):
+def classify_bow_NB(csv_file, get_feats=bow_feats_NB):
     '''
+    NaiveBayes classifier using Bag of Words, no counts.
+
+    Get_feats is a callable for etxracting feats: 
+    - bow_feats: unigram bow
+    - bgram_feats: bigram bow
+    - NE_feats_NB: Named Entity (NE) bow unigrams (?)
+
     '''
-    if need_tokenize:
-        sent = tokenizer(str(sent))
-
-    bigrams = list(zip(sent[:-1], sent[1:]))
-
-    return {'-'.join(b):1 for b in bigrams}
-
-
-def pos_feats(sent, need_tokenize=True):
-    '''
-    Returns bag of words feature (simple no counts just flag)
-    WITH TOK
-    '''
-    bow = {}
-    if need_tokenize:
-        sent = tokenizer(str(sent))
-
-    for tokens in sent:
-        bow[tokens.lower()] = 1
-    return bow
-
-
-def bow_feats(sent, need_tokenize=True):
-    '''
-    Returns bag of words feature (simple no counts just flag)
-    '''
-    bow = {}
-    if need_tokenize:
-        sent = tokenizer(str(sent))
-        
-    for tokens in sent:
-        bow[tokens.lower()] = 1
-    return bow
-
-
-def classify_bow_NB(csv_file, get_feats=bow_feats):
-    '''
-    Builds BOW calssifier (SVC or Naive) and prints accuracy
-    or most informative feats
-    '''
-    print("classify_bow_NB")
+    print("classify_bow_NB ", get_feats.__name__)
     df = pd.read_csv(csv_file)
     ## randomize - not needed because split_test_train randomizes
     # df = dataset.sample(frac=1)
@@ -99,7 +58,6 @@ def classify_bow_NB(csv_file, get_feats=bow_feats):
     train = list(zip(X_train, y_train))
 
     test_feats = [(get_feats(sent), label) for sent, label in test]
-    # devtest_feats = [(get_feats(sent), label) for sent, label in devtest]
     train_feats = [(get_feats(sent), label) for sent, label in train]
 
     # print(test_feats[:10])
@@ -142,54 +100,18 @@ def classify_bow_NB(csv_file, get_feats=bow_feats):
     print("Accuracy score:", acc)
 
 
-def classify_bow_counts2(csv_file, classifier_type=MultinomialNB, ngram_range=(1,1),get_feats=bow_feats):
-    print("classify_bow_counts2")
-    # BOW with counts
-    count_vect = CountVectorizer()
-
-    df = pd.read_csv(csv_file)
-
-    X = df['sent']
-    y = df["s_spoiler"]
-
-    # Xy = list(zip(X, y))
-
-    assert(len(X)==len(y)), "XY MISMATCH"
-
-    size = len(X)
-    bite = math.floor(size/10)
-
-
-    X_train_counts = count_vect.fit_transform([str(sent) for sent in X[bite:]])
-    y_train = y[bite:]
-
-    print(str(X[0]))
-
-    X_test_counts = count_vect.transform([str(sent) for sent in X[:bite]])
-    y_test = y[:bite]
-
-
-    ## X_counts is document term matrix where column = every feature in set
-    ## and row = sent index, and value at row,col is boolean
-    ## indicating if word_col appears in sent_row
-
-    classify = classifier_type()
-    classify.fit(X_train_counts, y_train)
-
-    y_test_predicted = classify.predict(X_test_counts)
-
-    X_columns=count_vect.get_feature_names()
-    print(X_columns[:40])
-
-    print(classifier_type," results")
-    print(metrics.classification_report(y_test, y_test_predicted))
-
     
 
 ## SAME AS classify_many_feats(feat_list=[])
-def classify_bow_counts(csv_file, classifier_type=LinearSVC, ngram_range=(1,1)):
+def classify_bow_counts(csv_file, 
+                        classifier_type=LinearSVC, 
+                        ngram_range=(1,1),
+                        text_feats=[]):
     '''
-    Builds BOW with counts calssifier (tf-idf weighing)
+    Classifier with counts vetcorizer.
+    Classifier_type: LinearSVC, MultinomialNB, LinearRegression (?)
+    Ngram_range: (1,1) unigrams, (2,2) only bigrams, (1,2) unigrams + bigrams
+    Text_feats: pos_bigrams, other (?)
     '''
     print("classify_bow_counts")
     df = pd.read_csv(csv_file)
@@ -199,55 +121,50 @@ def classify_bow_counts(csv_file, classifier_type=LinearSVC, ngram_range=(1,1)):
     ## Count vect
     cvect = CountVectorizer(ngram_range=ngram_range)
     X = cvect.fit_transform(df.sent.values.astype('U'))
-    X_columns=cvect.get_feature_names()
-    print(X_columns[:40])
     y = df["s_spoiler"]
 
-    # classifier = experiment(X,y, classifier_type)
+    X_columns=cvect.get_feature_names()
+    print("X_cols: ",X_columns[:10])
+
+
+    print("Total size y,X:" ,y.shape[0],X.shape[0])
+
     ## SPLIT
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1)
 
-    ## CLASSIFIER
-    classifier = classifier_type()
+    classifier = experiment(X_train, X_test, y_train, y_test, classifier_type)
 
-    ## TRAIN
-    classifier.fit(X_train, y_train)
-
-    #####PREDICT UNSEEN
-    texts = ["Harry kills Voldemort at the end.", 
-        "I never expected it to end with a big wedding",
-        "a b c",
-        "what a cliffhanger",
-        "i don't believe it",
-        "another one",
-        "and another",
-        "this isn't a spoiler",
-        "OMG I can't believe J was K's father!"]
-    text_features = cvect.transform(texts)
-    print("TF:", text_features)
-    predictions = classifier.predict(text_features)
-    for text, predicted in zip(texts, predictions):
-        print('"{}"'.format(text))
-        print("  - Predicted as: '{}'".format(predicted))
-        print("")
+    predict_unseen(cvect, classifier)
 
 
 
-def classify_many_feats(csv_file, feat_list=[], classifier_type=LinearSVC, ngram_range=(1,1)):
+
+def classify_many_feats(csv_file, 
+                        feat_list=[], 
+                        classifier_type=LinearSVC, 
+                        ngram_range=(1,1),
+                        ## FOR DEVELOPMENT ONLY
+                        num_rows=None):
     '''
-    Classifies with metadata
-    feat_list = list of target feats chosen out of:
-    ['userID', 'bookID', 'rating', 
-    'date_published','authorID', 'genre',
-    'sent', 's_loc']
+    Classifier with count vectorizer using Metadata and tetx features.
+
+    Classifier_type: LinearSVC, MultinomialNB, LinearRegression (?)
+    Ngram_range: (1,1) unigrams, (2,2) only bigrams, (1,2) unigrams + bigrams
+                -> Not used if Text_feats is specified because other tetx feat will be used
+    Text_feats: pos_bigrams, other (?)
+
+    Feat_list: list of target metadata feats, can be
+            ['userID', 'bookID', 'rating', 
+            'date_published','authorID', 'genre',
+            'sent', 's_loc']
     '''
     print("classify_many_feats")
-    df = pd.read_csv(csv_file)
+    df = pd.read_csv(csv_file, nrows=num_rows)
     ## randomize - not needed because split_test_train randomizes
     # df = dataset.sample(frac=1)
 
 
-    ### GATHER DATA
+    ### Modify data in string format: make float
     df["userID"] = df["userID"].map(lambda s: float(crc32(s.encode("utf-8")) & 0xffffffff) / 2**32)
     df["genre"] = df["genre"].map(lambda s: float(crc32(s.encode("utf-8")) & 0xffffffff) / 2**32)
     
@@ -257,25 +174,40 @@ def classify_many_feats(csv_file, feat_list=[], classifier_type=LinearSVC, ngram
 
     print("FEATURE_LIST: ", feat_list)
     
+    ## TEXT FEATURES
+    pos_bgrams = []
+    if 'pos_bigrams':
+        start = timeit.default_timer()
+        print("Start pos bigrams")
 
-    X = sp.sparse.hstack((cvect .fit_transform(df.sent.values.astype('U')), df[feat_list].values),format='csr')
-    X_columns=cvect.get_feature_names()+df[feat_list].columns.tolist()
-    print(X_columns[:40])
+        df["sent"] = df["sent"].map(pos_bgram_feats)
+        stop = timeit.default_timer()
+
+        print("Time for pos bigrams:", stop-start)
+        print("Pos bigrams: ", df["sent"][:10])
+        feat_list.remove('pos_bigrams')
+
+    X = sp.sparse.hstack((cvect.fit_transform(df.sent.values.astype('U')), df[feat_list].values),format='csr')
+    # X = sp.sparse.hstack((cvect.fit_transform(df["sent"]), df[feat_list].values),format='csr')
     y = df["s_spoiler"]
+    # SPLIT 
+    X_columns=cvect.get_feature_names()+df[feat_list].columns.tolist()
+    print("X_cols: ",X_columns[:10])
 
-    experiment(X,y, classifier_type)
-
-
-
-def experiment(X, y, classifier_type):
-    '''
-    Runs training and predictions, print results
-    '''
     print("Total size y,X:" ,y.shape[0],X.shape[0])
-    
-    ## SPLIT
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1)
 
+    classifier = experiment(X_train, X_test, y_train, y_test, classifier_type)
+
+
+
+
+
+def experiment(X_train, X_test, y_train, y_test, classifier_type):
+    '''
+    Runs training and predictions on classifier of type classifier_type
+    '''
+    
     ## CLASSIFIER
     classifier = classifier_type()
 
@@ -309,20 +241,64 @@ def experiment(X, y, classifier_type):
 
 
 
+def predict_unseen(vectorizer, classifier):
+    '''
+    Predicts spoiler label for unseen sentences
+    '''
+
+    # PREDICT UNSEEN
+    unseen_texts = [
+        "H kills V at the end.", 
+        "I never expected it to end with a big wedding...",
+        "a b c d e f g",
+        "ajvhsdbnmu Woooooow fs qon vjk vkuhg dkj!!!!",
+        "What a cliffhanger!",
+        "How sad that A K dies.",
+        "I don't believe it!!",
+        "Another one for the hell of it.",
+        "Really I am trying to trick you, why did it have to happen",
+        "NOOOOOOOOO",
+        "NO",
+        "This isn't a spoiler.",
+        "I can't believe DV was L's father!"
+        ]
+
+
+    unseen_feats = vectorizer.transform(unseen_texts)
+    # print("mat:",  unseen_feats)
+
+    predictions = classifier.predict(unseen_feats)
+
+    for text, predicted in zip(unseen_texts, predictions):
+        print('"{}"'.format(text))
+        print("  - Predicted as: '{}'".format(predicted))
+        print("")
+
 
 
 if __name__=="__main__":
-    '''
-    Loads and partitions data into train-test-devtest
-    calls classifiers
-    '''
+
     file = 'data/balanced_revs.csv'
-    
 
-    # classify_bow_counts2(file)
-    classify_bow_counts(file, classifier_type=MultinomialNB)
-    # classify_many_feats(file, classifier_type=MultinomialNB)
+    # classify_bow_NB(file, get_feats=bow_feats_NB)
+    # classify_bow_NB(file, get_feats=bgram_feats_NB)
+    # classify_bow_NB(file, get_feats=NE_feats_NB)
 
-    # classify_bow_NB(file, get_feats=bow_feats)
+    # classify_bow_counts(file,
+    #                     ngram_range=(1,1),
+    #                     classifier_type=MultinomialNB)
+
+    # ## same as classify_bow_counts
+    # classify_many_feats(file, 
+    #                     ngram_range=(1,1),
+    #                     classifier_type=MultinomialNB)
+
+    classify_many_feats(file, 
+                        ngram_range=(1,1),
+                        classifier_type=MultinomialNB, 
+                        feat_list=['pos_bigrams']
+                        # num_rows=100000
+                        )
+
 
     
