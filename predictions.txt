@@ -1,0 +1,26 @@
+"Harry kills Voldemort at the end."
+  - Predicted as: '1'
+
+"I never expected it to end with a big wedding"
+  - Predicted as: '1'
+
+"a b c"
+  - Predicted as: '0'
+
+"what a cliffhanger"
+  - Predicted as: '0'
+
+"i don't believe it"
+  - Predicted as: '1'
+
+"another one"
+  - Predicted as: '0'
+
+"and another"
+  - Predicted as: '0'
+
+"this isn't a spoiler"
+  - Predicted as: '0'
+
+"OMG I can't believe J was K's father!"
+  - Predicted as: '1'
