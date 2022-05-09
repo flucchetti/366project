@@ -3,9 +3,12 @@ import gzip
 import random
 from termios import VLNEXT
 import timeit
+import csv 
+from partition import tokenize as tokenizer
+import nltk
 
 from flask_sqlalchemy import get_debug_queries
-
+import pandas as pd
 '''
 This module contains methods to pre-process the dataset
 and save the new cleaned dataset to a file in /data
@@ -111,9 +114,9 @@ def save_book_order():
     print('Time: ', stop - start)  
 
 
-def make_genre_dict(genre_ds):
+def make_genre_dict(genre_ds="data/goodreads_book_genres_initial.json"):
     '''
-    Takes genre dataset (JSON) and makes a genre-to-bookIDs dict
+    Takes WAN genre dataset (JSON) and makes a genre-to-bookIDs dict
     '''
     genre_to_bookID = {}
 
@@ -221,7 +224,198 @@ def save_genre(num_entries=None):
 
     print('Time: ', stop - start)  
 
+def pos_feats_name_only(sent):
+    '''
+    Unigram feats: only the NNP (proper noun) POS tag
+    '''
+    # NNP_unigrams = {}
+    tags = nltk.pos_tag(tokenizer(sent))
+    
+    if not tags: #if tags is empty
+        return
+
+    unilist, poslist = zip(*tags)
+
+    if not ("NNP" in poslist):
+        return
+    
+    NNP_unigrams=[]
+    for i, element in enumerate(poslist):
+        if element == "NNP":
+            uni = unilist[i] 
+            NNP_unigrams.append(uni)   
+
+    return "-".join(NNP_unigrams)
+
+
+def make_csv(file_name, bookID_to_genre, head=None, tokenize=False, csv_file='data/reviews.csv'):
+    '''
+    Note: genre is only 5 cat
+    '''
+    count = 0
+    fp = open(csv_file, 'w', encoding='UTF8')
+    header = ['reviewID', 'userID', 'bookID', 'genre', 'rating', 'sent', 'sloc', 'has_spoiler']
+    ## date, stars?
+    writer = csv.writer(fp)
+    writer.writerow(header)
+
+    with gzip.open(file_name) as fin:
+        for l in fin:
+            d = json.loads(l)
+
+            reviewID = d['review_id']
+            userID = d['user_id']
+            bookID = d['book_id']
+            stars = d['rating']
+
+
+            ## only 5 most pop genres
+            if bookID not in bookID_to_genre.keys():
+                continue
+            genre = bookID_to_genre[bookID]
+
+            rev_info = [reviewID, userID, bookID, genre, stars]
+            for i, sent in enumerate(d['review_sentences']):
+                sent_info=[]
+                if not tokenize:
+                    sent_info = [sent[1], i, sent[0]]
+                else:
+                    s = str(sent[1])
+                    toks = pos_feats_name_only(s)
+                    if not toks:
+                        continue
+                    sent_info = [toks, i, sent[0]]
+                ##write to csv 
+                writer.writerow(rev_info + sent_info)
+
+            count += 1
+            # break if reaches the nth entry - only for dev
+            if (head is not None) and (count > head):
+               break
+
+    print("Num entries: " , count)
+
+
+
+def make_csv_cut(file_name,  bookID_to_genre, head=None, csv_file='data/reviews_cut_new.csv'):
+    '''
+    even split
+    '''
+    count = 0
+    count_sp = 0
+    count_nosp = 0
+    fp = open(csv_file, 'w', encoding='UTF8')
+    header = ['reviewID', 'userID', 'bookID', 'genre','rating', 'sent', 'sloc', 'has_spoiler']
+    ## date, stars?
+    writer = csv.writer(fp)
+    writer.writerow(header)
+
+    with gzip.open(file_name) as fin:
+        for l in fin:
+            d = json.loads(l)
+
+            reviewID = d['review_id']
+            userID = d['user_id']
+            bookID = d['book_id']
+            stars = d['rating']
+
+            ## only 5 most pop genres
+            if bookID not in bookID_to_genre.keys():
+                continue
+            genre = bookID_to_genre[bookID]
+
+            rev_info = [reviewID, userID, bookID, genre, stars]
+            for i, sent in enumerate(d['review_sentences']):
+                sent_info=[]
+                if sent[0] == 1:
+                    count_sp += 1
+                else:
+                    continue
+
+                sent_info = [sent[1], i, sent[0]]
+                writer.writerow(rev_info + sent_info)
+
+            count += 1
+            # break if reaches the nth entry - only for dev
+            if (head is not None) and (count > head):
+               break
+
+    fin.close()
+
+    with gzip.open(file_name) as f:
+        for l in f:
+            d = json.loads(l)
+            
+            reviewID = d['review_id']
+            userID = d['user_id']
+            bookID = d['book_id']
+            stars = d['rating']
+
+            ## only 5 most pop genres
+            if bookID not in bookID_to_genre.keys():
+                continue
+            genre = bookID_to_genre[bookID]
+
+            rev_info = [reviewID, userID, bookID, genre, stars]
+            for i, sent in enumerate(d['review_sentences']):
+                sent_info=[]
+                if count_nosp > count_sp:
+                    print("COUNT:", count_nosp)
+                    return
+
+                if sent[0] == 0:
+                    count_nosp += 1
+                else:
+                    continue
+
+                sent_info = [sent[1], i, sent[0]]
+                # else:
+                #     s = str(sent[1])
+                #     toks = pos_feats_name_only(s)
+                #     if not toks:
+                #         continue
+                #     sent_info = [toks, i, sent[0]]
+                ##write to csv 
+                writer.writerow(rev_info + sent_info)
+
+            count += 1
+            # break if reaches the nth entry - only for dev
+            if (head is not None) and (count > head):
+               break
+
+    print("Num entries: " , count)
 
 
 if __name__=="__main__":
-    save_genre()
+    bookID_to_genre = invert_mapping(make_genre_dict())
+    make_csv_cut("data/goodreads_reviews_spoiler.json.gz", bookID_to_genre, head=None)
+    # df = pd.read_csv('data/tok_reviews.csv')
+    ## use eval to get toks
+    print("done create")
+
+    file_name = 'data/reviews_cut_new.csv'    
+    sp_count = 0
+    nosp_count = 0
+    # fp = csv.reader(file_name)
+    # for line in fp:
+    #     print(line[-1])
+    #     if line[-1] == "0":
+    #         nosp_count += 1
+    #     else:
+    #         sp_count += 1
+
+    # print(sp_count , nosp_count)
+
+    with open(file_name, newline='') as f:
+        reader = csv.reader(f)
+        for row in reader:
+            
+            # do something here with `row`
+            if row[-1] == "0":
+                nosp_count += 1
+            elif row[-1] == "1":
+                sp_count += 1
+
+    print(sp_count , nosp_count)
+    print(sp_count + nosp_count)
+    print(sp_count / (sp_count + nosp_count))

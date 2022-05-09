@@ -7,6 +7,11 @@ import spacy
 import nltk
 import string
 from nltk.corpus import stopwords
+import timeit
+import csv
+import pandas as pd
+
+
 
 # from nltk.tokenize import word_tokenize
 nlp = spacy.load("en_core_web_sm", exclude=["parser"])
@@ -141,7 +146,8 @@ def get_sents(json_entry):
     # print(tuples)
     return tuples
 
-## TESTING METHOD  
+
+## TESTING METHOD -- too slow, sub with POS = NNP
 def get_sents_no_names(json_entry):
     '''
     Gathers only sentences + spoiler flag from json entry
@@ -167,7 +173,30 @@ def get_sents_no_names(json_entry):
     return tuples
 
 
-def load_sents(file_name, head = None):
+def get_sents_loc(json_entry):
+    '''
+    load sents with relative location in review text
+
+    sents need to be in format:
+    (tokens, spoiler_label, location in review)
+    '''
+    tuples = []
+    sents = json_entry['review_sentences']
+
+    for loc,s in enumerate(sents):
+        if len(s[1]) < 3:
+            continue
+        tokens = tokenize(s[1])
+        # print(tokens)
+        # tokens = [token.text for token in nlp(str(s))]
+        spoiler_flag = s[0]
+        tuples.append((tokens,spoiler_flag, loc))
+
+    # print(tuples)
+    return tuples
+
+
+def load_sents(file_name, head = None, sents_method=get_sents):
     '''
     Code from Wan github.
     Returns list of tuples where for each sentence in reviews: (tokens, spoiler_flag)
@@ -177,7 +206,7 @@ def load_sents(file_name, head = None):
     with gzip.open(file_name) as fin:
         for l in fin:
             d = json.loads(l)
-            data.extend(get_sents(d))
+            data.extend(sents_method(d))
             count += 1
             
             # break if reaches the nth line
@@ -185,6 +214,35 @@ def load_sents(file_name, head = None):
                 break
 
     return data
+
+
+def csv_dict(csv_file="data/shuf_tok_reviews.csv", head=None):
+    df = pd.read_csv(csv_file)
+    start = timeit.default_timer()
+
+    users = df.userID[:head]
+    genres = df.genre[:head]
+    bookIDs = df.bookID[:head]
+    slocs = df.loc[:head]
+    labels = df.has_spoiler[:head]
+    sents_str = df.sent[:head]
+    stop = timeit.default_timer()
+    print('Time for fetching csv cols: ', stop - start)
+
+    ## needs lower()
+    tok_sents = [eval(s.lower()) for s in sents_str]
+
+    stop2 = timeit.default_timer()
+    print('Time for fetching toks: ', stop2 - start)
+
+    return {'userID': users, 
+            'genre': genres,
+            'bookID': bookIDs,
+            'tokens': tok_sents,
+            'sloc': slocs,
+            'label':labels}
+
+    
 
 
 def partition(sents, seed=10):
@@ -207,3 +265,19 @@ def partition(sents, seed=10):
         int(100*(len(train_sents)/ size)))
 
     return train_sents, test_sents, devtest_sents
+
+
+
+if __name__=="__main__":
+    start = timeit.default_timer()
+
+    # ## dataset
+    # ds = 'data/goodreads_reviews_spoiler.json.gz'
+    # ## None entries = all entries
+    # num_entries = 10000
+    # data = load_sents(ds, num_entries, get_sents_loc)
+
+    partition_csv()
+    
+    stop = timeit.default_timer()
+    print('Time for loading data: ', stop - start)
