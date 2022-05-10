@@ -1,6 +1,7 @@
 import json
 import gzip
 import csv
+import pandas as pd
 
 '''
 This module contains methods to pre-process the dataset
@@ -14,8 +15,14 @@ book_info_ds = 'data/goodreads_books.json.gz'
 genre_ds = 'data/goodreads_book_genres_initial.json'
 
 ## number of spoiler sentences in review_ds
-TOT_NUM_SPOIL = 569724
+_TOT_NUM_SPOIL = 569724
+## by genre
+TOT_NUM_SPOIL_ROM = 87917
+TOT_NUM_SPOIL_FAN = 222828
+TOT_NUM_SPOIL_YA = 11259
 
+## Select which to use
+TOT_NUM_SPOIL = _TOT_NUM_SPOIL
 
 ## INIT DICTS
 
@@ -40,7 +47,7 @@ for line in open(genre_ds,"r"):
         genre = sorted(top_genre, key=top_genre.get, reverse=True)[0].split(",")[0]
 
         # ##limit to these most popular genres:
-        # if genre not in ["fantasy", "mystery", "romance", "children", "young-adult"]:
+        # if genre not in ["fantasy"]:
         #     continue
 
         book_to_genre[bookID] = genre
@@ -136,29 +143,37 @@ def make_balanced_csv(dataset, csv_file, num_revs=None):
 
 
 
-def ratio_spoilers(csv_file):
-    '''
-    Counts ratio spoiler=1 to spoiler=0 in csv
-    '''
-    sp_count = 0
-    nosp_count = 0
-    with open(csv_file, newline='') as f:
-        reader = csv.reader(f)
-        for row in reader:
-            if row[-1] == "0":
-                nosp_count += 1
-            elif row[-1] == "1":
-                sp_count += 1
-
-    print("SP", "NO SP")
-    print(sp_count , nosp_count)
-    print('SUM', sp_count + nosp_count)
-    print(sp_count / (sp_count + nosp_count))
-
-
 
 
 if __name__=="__main__":
     csv_file = 'data/balanced_revs.csv'
     # make_balanced_csv(review_ds, csv_file)
-    # ratio_spoilers(csv_file)
+
+    ## spoiler ratio
+    df = pd.read_csv(csv_file)
+    count0 = df[(df.s_spoiler == 0)].count()[0]
+    count1 = df[(df.s_spoiler == 1)].count()[0]
+    print(csv_file, "count0: ", count0, "\n",
+                    "count1: ", count1, "\n",
+                    "ratio: ", count1/(count0+count1))
+    
+    ## STATISTICS
+    # df = pd.read_csv('data/balanced_revs.csv')
+    
+    # print(df["genre"].value_counts())
+
+    # genres = ["fantasy",
+    #         "romance",            
+    #         "young-adult",
+    #         "fiction",
+    #         "mystery",
+    #         "comics",
+    #         "history",
+    #         "non-fiction",
+    #         "children",
+    #         "poetry"]
+
+
+    # for g in genres:
+    #     print("0 count: ", g, df[(df.genre == g) & (df.s_spoiler == 0)].count())
+    #     print("1 count: ", g, df[(df.genre == g) & (df.s_spoiler == 1)].count())

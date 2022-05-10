@@ -63,7 +63,6 @@ def classify_bow_NB(csv_file, get_feats=bow_feats_NB):
     test_feats = [(get_feats(sent), label) for sent, label in test]
     train_feats = [(get_feats(sent), label) for sent, label in train]
 
-    # print(test_feats[:10])
 
     classify = nltk.NaiveBayesClassifier.train(train_feats)
 
@@ -138,8 +137,6 @@ def classify_bow_counts(csv_file,
     predict_unseen(cvect, classifier)
 
 
-def cast(s):
-    return 0 if s == None else s
 
 def classify_many_feats(csv_file, 
                         feat_list=[], 
@@ -156,8 +153,8 @@ def classify_many_feats(csv_file,
 
     Feat_list: list of target metadata or text feats, can be
     metadata: 'userID', 'bookID', 'rating', 
-            'date_published','authorID', 'genre'
-    tetx_feats: 's_loc', 'pos_bigrams', 'NE_unigrams'
+            'date_published','authorID', 'genre', 's_loc'
+    text_feats: 'pos_bigrams', 'NE_unigrams'
 
     NOTE: date_published has NaN entries, does not work
     '''
@@ -199,13 +196,12 @@ def classify_many_feats(csv_file,
     y = df["s_spoiler"]
     # SPLIT 
     X_columns=cvect.get_feature_names()+df[feat_list].columns.tolist()
-    print("X_cols[50:60]: ",X_columns[50:60])
+    print("X_cols[120:130]: ",X_columns[120:130])
 
     print("Total size y,X:" ,y.shape[0],X.shape[0])
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1)
 
     classifier = experiment(X_train, X_test, y_train, y_test, classifier_type)
-
 
 
 
@@ -287,24 +283,34 @@ def predict_unseen(vectorizer, classifier):
 
 if __name__=="__main__":
 
-    file = 'data/balanced_revs.csv'
-
-    # classify_bow_NB(file, get_feats=bow_feats_NB)
+    file = 'data/balanced_fan.csv'
+    print(file)
+    # classify_bow_NB(file)
     # classify_bow_NB(file, get_feats=bgram_feats_NB)
     # classify_bow_NB(file, get_feats=NE_feats_NB)
 
-    # classify_bow_counts(file,
-    #                     ngram_range=(1,1),
-    #                     classifier_type=MultinomialNB)
+    # baseline bow_counts (1,1)
+    for nr in [(1,1), (1,2), (1,3)]:
+        print(nr)
+        classify_bow_counts(file,
+                            ngram_range=nr,
+                            classifier_type=MultinomialNB)
 
-    # ## same as classify_bow_counts
-    # classify_many_feats(file, 
-    #                     ngram_range=(1,1),
-    #                     classifier_type=MultinomialNB)
+        for f in [['s_loc'], ['userID'], ['rating']]:
+            classify_many_feats(file, 
+                                ngram_range=nr,
+                                classifier_type=MultinomialNB,
+                                feat_list=f
+                                )
+                                
+        classify_many_feats(file,
+                            ngram_range=nr,
+                            classifier_type=MultinomialNB,
+                            feat_list=['userID', 's_loc'])
 
-    classify_many_feats(file, 
-                        ngram_range=(1,2),
-                        classifier_type=MultinomialNB, 
-                        feat_list=['NE_unigrams']
-                        )
+    classify_many_feats(file,
+                        ngram_range=(1,1),
+                        classifier_type=MultinomialNB,
+                        feat_list=['pos_bigrams'])
+
 

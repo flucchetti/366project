@@ -60,7 +60,7 @@ def bow_feats_NB(sent, need_tokenize=True):
     return bow
 
 
-## NEED TESTING
+
 def NE_feats_NB(sent, need_tokenize=True):
     '''
     For NaiveBayes classifier
@@ -71,9 +71,12 @@ def NE_feats_NB(sent, need_tokenize=True):
 
     NNP_unigrams = {"#EMPTY#":1}
     tags = nltk.pos_tag(sent)
-    
-    if not tags: #if tags is empty, error
-        return 
+    # print(tags)
+
+    if not tags: 
+        #if tags is empty, none
+        ## sometimes dataset has null entry
+        return NNP_unigrams
 
     unilist, poslist = zip(*tags)
     
@@ -82,6 +85,7 @@ def NE_feats_NB(sent, need_tokenize=True):
             uni = unilist[i] 
             NNP_unigrams[uni.lower()] = 1   
 
+    # print(NNP_unigrams)
     return NNP_unigrams
 
 
@@ -90,11 +94,11 @@ def NE_feats(sent, need_tokenize=True):
     For classify_bow_counts and classify_many_feats
     Returns Named Entity (NE) unigrams from sent
     '''
-    return ' '.join(NE_feats_NB(sent).keys()), NE_feats_NB(sent)
+    return ' '.join(NE_feats_NB(sent).keys())
 
 
 ## for classify_many
-def pos_bgram_feats(sent, need_tokenize=True, sub=False):
+def pos_bgram_feats(sent, need_tokenize=True, sub=True):
     '''
     For classify_bow_counts and classify_many_feats
     Text feature: Parts of Speech bigrams
@@ -110,8 +114,8 @@ def pos_bgram_feats(sent, need_tokenize=True, sub=False):
     placeholder_bgrams = ["#EMPTY#"]
     tags = nltk.pos_tag(word_tokenize(sent))
 
-    if not tags: #if tags is empty, error
-        return 
+    # if not tags: #if tags is empty, error
+    #     return 
 
     ugram_to_pos = dict(tags)
     # print(ugram_to_pos)
