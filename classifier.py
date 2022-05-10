@@ -138,7 +138,8 @@ def classify_bow_counts(csv_file,
     predict_unseen(cvect, classifier)
 
 
-
+def cast(s):
+    return 0 if s == None else s
 
 def classify_many_feats(csv_file, 
                         feat_list=[], 
@@ -157,12 +158,14 @@ def classify_many_feats(csv_file,
     metadata: 'userID', 'bookID', 'rating', 
             'date_published','authorID', 'genre'
     tetx_feats: 's_loc', 'pos_bigrams', 'NE_unigrams'
+
+    NOTE: date_published has NaN entries, does not work
     '''
     print("\nclassify_many_feats")
 
     if (ngram_range != (1,1) 
         and ('NE_unigrams' in feat_list or 'pos_bigrams' in feat_list)):
-        raise ValueError()
+        raise ValueError("Text feature incompatible with ngram range")
 
     df = pd.read_csv(csv_file, nrows=num_rows)
     ## randomize - not needed because split_test_train randomizes
@@ -299,26 +302,9 @@ if __name__=="__main__":
     #                     ngram_range=(1,1),
     #                     classifier_type=MultinomialNB)
 
-    ## fix date pub Nan
-    
-    classify_bow_NB(file, get_feats=NE_feats_NB)
-
-    classify_many_feats(file, 
-                        ngram_range=(1,1),
-                        classifier_type=MultinomialNB, 
-                        feat_list=['NE_unigrams']
-                        )
-
-
     classify_many_feats(file, 
                         ngram_range=(1,2),
                         classifier_type=MultinomialNB, 
                         feat_list=['NE_unigrams']
                         )
 
-    classify_many_feats(file, 
-                    ngram_range=(1,2),
-                    classifier_type=MultinomialNB, 
-                    feat_list=['pos_bigrams']
-                    )
-    
