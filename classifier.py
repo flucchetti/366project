@@ -44,10 +44,13 @@ def classify_bow_NB(csv_file, get_feats=bow_feats_NB):
     - NE_feats_NB: Named Entity (NE) bow unigrams (?)
 
     '''
-    print("classify_bow_NB ", get_feats.__name__)
+    print("\nclassify_bow_NB ", get_feats.__name__)
     df = pd.read_csv(csv_file)
     ## randomize - not needed because split_test_train randomizes
     # df = dataset.sample(frac=1)
+
+    ## cast to unicode
+    df["sent"] = df.sent.values.astype('U')
 
     X = df['sent']
     y = df["s_spoiler"]
@@ -105,15 +108,13 @@ def classify_bow_NB(csv_file, get_feats=bow_feats_NB):
 ## SAME AS classify_many_feats(feat_list=[])
 def classify_bow_counts(csv_file, 
                         classifier_type=LinearSVC, 
-                        ngram_range=(1,1),
-                        text_feats=[]):
+                        ngram_range=(1,1)):
     '''
     Classifier with counts vetcorizer.
     Classifier_type: LinearSVC, MultinomialNB, LinearRegression (?)
     Ngram_range: (1,1) unigrams, (2,2) only bigrams, (1,2) unigrams + bigrams
-    Text_feats: pos_bigrams, other (?)
     '''
-    print("classify_bow_counts")
+    print("\nclassify_bow_counts")
     df = pd.read_csv(csv_file)
     ## randomize - not needed because split_test_train randomizes
     # df = dataset.sample(frac=1)
@@ -124,7 +125,7 @@ def classify_bow_counts(csv_file,
     y = df["s_spoiler"]
 
     X_columns=cvect.get_feature_names()
-    print("X_cols: ",X_columns[:10])
+    print("X_cols[50:60]: ",X_columns[50:60])
 
 
     print("Total size y,X:" ,y.shape[0],X.shape[0])
@@ -150,24 +151,30 @@ def classify_many_feats(csv_file,
 
     Classifier_type: LinearSVC, MultinomialNB, LinearRegression (?)
     Ngram_range: (1,1) unigrams, (2,2) only bigrams, (1,2) unigrams + bigrams
-                -> Not used if Text_feats is specified because other tetx feat will be used
-    Text_feats: pos_bigrams, other (?)
+                -> WARNING when combining ngram_range and text feats
 
-    Feat_list: list of target metadata feats, can be
-            ['userID', 'bookID', 'rating', 
-            'date_published','authorID', 'genre',
-            'sent', 's_loc']
+    Feat_list: list of target metadata or text feats, can be
+    metadata: 'userID', 'bookID', 'rating', 
+            'date_published','authorID', 'genre'
+    tetx_feats: 's_loc', 'pos_bigrams', 'NE_unigrams'
     '''
-    print("classify_many_feats")
+    print("\nclassify_many_feats")
+
+    if (ngram_range != (1,1) 
+        and ('NE_unigrams' in feat_list or 'pos_bigrams' in feat_list)):
+        raise ValueError()
+
     df = pd.read_csv(csv_file, nrows=num_rows)
     ## randomize - not needed because split_test_train randomizes
     # df = dataset.sample(frac=1)
 
 
-    ### Modify data in string format: make float
+    ### Modify data in string format: cast to float by hashing
     df["userID"] = df["userID"].map(lambda s: float(crc32(s.encode("utf-8")) & 0xffffffff) / 2**32)
     df["genre"] = df["genre"].map(lambda s: float(crc32(s.encode("utf-8")) & 0xffffffff) / 2**32)
-    
+    ## cast to unicode
+    df["sent"] = df.sent.values.astype('U')
+
 
     # Create vectorizer for function to use
     cvect = CountVectorizer(ngram_range=ngram_range)
@@ -175,24 +182,21 @@ def classify_many_feats(csv_file,
     print("FEATURE_LIST: ", feat_list)
     
     ## TEXT FEATURES
-    pos_bgrams = []
-    if 'pos_bigrams':
-        start = timeit.default_timer()
-        print("Start pos bigrams")
-
-        df["sent"] = df["sent"].map(pos_bgram_feats)
-        stop = timeit.default_timer()
-
-        print("Time for pos bigrams:", stop-start)
+    if 'pos_bigrams' in feat_list:
+        df["sent"] = df["sent"].map(lambda x: pos_bgram_feats(x))
         print("Pos bigrams: ", df["sent"][:10])
         feat_list.remove('pos_bigrams')
+    elif 'NE_unigrams' in feat_list:
+        df["sent"] = df["sent"].map(lambda x: NE_feats(x))
+        print("NE unigrams: ", df["sent"][:10])
+        feat_list.remove('NE_unigrams')
 
-    X = sp.sparse.hstack((cvect.fit_transform(df.sent.values.astype('U')), df[feat_list].values),format='csr')
+    X = sp.sparse.hstack((cvect.fit_transform(df["sent"]), df[feat_list].values),format='csr')
     # X = sp.sparse.hstack((cvect.fit_transform(df["sent"]), df[feat_list].values),format='csr')
     y = df["s_spoiler"]
     # SPLIT 
     X_columns=cvect.get_feature_names()+df[feat_list].columns.tolist()
-    print("X_cols: ",X_columns[:10])
+    print("X_cols[50:60]: ",X_columns[50:60])
 
     print("Total size y,X:" ,y.shape[0],X.shape[0])
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.1)
@@ -252,6 +256,7 @@ def predict_unseen(vectorizer, classifier):
         "I never expected it to end with a big wedding...",
         "a b c d e f g",
         "ajvhsdbnmu Woooooow fs qon vjk vkuhg dkj!!!!",
+        "ajvhsdbnmu fs qon vjk vkuhg dkj!!!!",
         "What a cliffhanger!",
         "How sad that A K dies.",
         "I don't believe it!!",
@@ -259,6 +264,7 @@ def predict_unseen(vectorizer, classifier):
         "Really I am trying to trick you, why did it have to happen",
         "NOOOOOOOOO",
         "NO",
+        "YES",
         "This isn't a spoiler.",
         "I can't believe DV was L's father!"
         ]
@@ -293,12 +299,26 @@ if __name__=="__main__":
     #                     ngram_range=(1,1),
     #                     classifier_type=MultinomialNB)
 
+    ## fix date pub Nan
+    
+    classify_bow_NB(file, get_feats=NE_feats_NB)
+
     classify_many_feats(file, 
                         ngram_range=(1,1),
                         classifier_type=MultinomialNB, 
-                        feat_list=['pos_bigrams']
-                        # num_rows=100000
+                        feat_list=['NE_unigrams']
                         )
 
 
+    classify_many_feats(file, 
+                        ngram_range=(1,2),
+                        classifier_type=MultinomialNB, 
+                        feat_list=['NE_unigrams']
+                        )
+
+    classify_many_feats(file, 
+                    ngram_range=(1,2),
+                    classifier_type=MultinomialNB, 
+                    feat_list=['pos_bigrams']
+                    )
     
